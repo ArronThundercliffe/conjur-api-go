@@ -121,10 +121,11 @@ func NewClientFromEnvironment(config Config) (*Client, error) {
 	authnJwtServiceID := os.Getenv("CONJUR_AUTHN_JWT_SERVICE_ID")
 	if authnJwtServiceID != "" {
 		return NewClientFromJwt(config, authnJwtServiceID)
-	
+	}
+
 	authnIamServiceId := os.Getenv("CONJUR_AUTHN_IAM_SERVICE_ID")
-	if AuthnIamServiceId != "" {
-		return NewClientFromIAMAuthn(config, iamAuthn)
+	if authnIamServiceId != "" {
+		return NewClientFromIAMAuthn(config, authnIamServiceId)
 	}
 
 	loginPair, err := LoginPairFromEnv()
@@ -135,15 +136,11 @@ func NewClientFromEnvironment(config Config) (*Client, error) {
 	return newClientFromStoredCredentials(config)
 }
 
-func (c *Config) AwsRegion() string {
-	return c.AwsRegion
-}
-
 func GetAwsCredentialsFromSts() (string, string, string, error) {
 	awsConfig := aws.Config{
-		Region: "c.AwsRegion()",
-		AwsAccount: "c.AwsAccount()",
-		AwsIamRole: "c.AwsIamRole()",
+		Region:     c.AwsRegion(),
+		AwsAccount: c.AwsAccount(),
+		AwsIamRole: c.AwsIamRole(),
 	}
 	awsSession := session.Must(session.NewSession(&awsConfig))
 	stsClient := sts.New(awsSession)
