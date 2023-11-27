@@ -17,7 +17,7 @@ const (
 	HttpTimeoutDefaultValue = 10
 )
 
-var supportedAuthnTypes = []string{"authn", "ldap", "oidc"}
+var supportedAuthnTypes = []string{"authn", "ldap", "oidc", "iam"}
 
 type Config struct {
 	Account           string `yaml:"account,omitempty"`
@@ -50,7 +50,7 @@ func (c *Config) Validate() error {
 		errors = append(errors, fmt.Sprintf("AuthnType must be one of %v", supportedAuthnTypes))
 	}
 
-	if (c.AuthnType == "ldap" || c.AuthnType == "oidc") && c.ServiceID == "" {
+	if (c.AuthnType == "ldap" || c.AuthnType == "oidc" || c.AuthnType == "iam") && c.ServiceID == "" {
 		errors = append(errors, fmt.Sprintf("Must specify a ServiceID when using %s", c.AuthnType))
 	}
 
@@ -81,8 +81,8 @@ func (c *Config) BaseURL() string {
 	return prefix + c.ApplianceURL
 }
 
-// The GetHttpTimeout function retrieves the Timeout value from the config struc. 
-// If config.HttpTimeout is 
+// The GetHttpTimeout function retrieves the Timeout value from the config struc.
+// If config.HttpTimeout is
 // - less than 0, GetHttpTimeout returns 0 (no timeout)
 // - equal to 0, GetHttpTimeout returns the default value (constant HttpTimeoutDefaultValue)
 // Otherwise, GetHttpTimeout returns the value of config.HttpTimeout

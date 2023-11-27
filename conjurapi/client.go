@@ -12,6 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/cyberark/conjur-api-go/conjurapi/authn"
 	"github.com/cyberark/conjur-api-go/conjurapi/logging"
 	"github.com/cyberark/conjur-api-go/conjurapi/response"
@@ -117,6 +121,10 @@ func NewClientFromEnvironment(config Config) (*Client, error) {
 	authnJwtServiceID := os.Getenv("CONJUR_AUTHN_JWT_SERVICE_ID")
 	if authnJwtServiceID != "" {
 		return NewClientFromJwt(config, authnJwtServiceID)
+	
+	authnIamServiceId := os.Getenv("CONJUR_AUTHN_IAM_SERVICE_ID")
+	if AuthnIamServiceId != "" {
+		return NewClientFromIAMAuthn(config, iamAuthn)
 	}
 
 	loginPair, err := LoginPairFromEnv()
@@ -125,6 +133,67 @@ func NewClientFromEnvironment(config Config) (*Client, error) {
 	}
 
 	return newClientFromStoredCredentials(config)
+}
+
+func (c *Config) AwsRegion() string {
+	return c.AwsRegion
+}
+
+func GetAwsCredentialsFromSts() (string, string, string, error) {
+	awsConfig := aws.Config{
+		Region: "c.AwsRegion()",
+		AwsAccount: "c.AwsAccount()",
+		AwsIamRole: "c.AwsIamRole()",
+	}
+	awsSession := session.Must(session.NewSession(&awsConfig))
+	stsClient := sts.New(awsSession)
+	input := &sts.GetCallerIdentityInput{}
+	result, err := stsClient.GetCallerIdentity(input)
+	if err != nil {
+		return "", "", "", err
+	}
+	awsAccessKeyId := *result.UserId
+	awsSecretAccessKey := *result.Account
+	awsStsSessionToken := *result.Arn
+	return awsAccessKeyId, awsSecretAccessKey, awsStsSessionToken, nil
+}
+
+func NewClientFromIAMAuthn(config Config, iamAuthn authn.IAMAuthn) (*Client, error) {
+	var httpClient *http.Client
+	if config.IsHttps() {
+		cert, err := config.ReadSSLCert()
+		if err != nil {
+			return nil, err
+		}
+		httpClient, err = newHTTPSClient(cert, config)
+		if err != nil {
+			return nil, err
+		}
+
+	} else {
+		httpClient = &http.Client{Timeout: time.Second * time.Duration(config.GetHttpTimeout())}
+	}
+
+	var authnIamUrl string
+	authnIamUrl = makeRouterURL(config.ApplianceURL, "authn-iam", config.AuthnIamServiceId, config.Account, "authenticate").String()
+
+	req, err := http.NewRequest("POST", authnIamUrl, strings.NewReader(awsAccessKeyId, awsSecretAccessKey, awsStsSessionToken))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := response.DataResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewClientFromToken(config, string(token))
 }
 
 func NewClientFromJwt(config Config, authnJwtServiceID string) (*Client, error) {
